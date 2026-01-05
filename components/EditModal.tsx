@@ -12,7 +12,18 @@ interface EditModalProps {
   onDelete?: (id: string) => void;
 }
 
-const COLORS = ['Black', 'White', 'Beige', 'Navy', 'Grey', 'Red', 'Pink', 'Gold', 'Green', 'Blue'];
+const COLOR_MAP: Record<string, string> = {
+  'Black': '#000000', 
+  'White': '#FFFFFF', 
+  'Beige': '#F5F5DC', 
+  'Navy': '#000080', 
+  'Grey': '#808080', 
+  'Red': '#FF0000', 
+  'Pink': '#FFC0CB', 
+  'Gold': '#FFD700', 
+  'Green': '#008000', 
+  'Blue': '#0000FF'
+};
 
 export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, onClose, onSave, onDelete }) => {
   const isBeauty = type === 'beauty';
@@ -97,16 +108,22 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
 
           <div className="space-y-6">
-            <div className="space-y-1.5">
+            <div className="space-y-2.5">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Primary Color</label>
-              <div className="flex flex-wrap gap-2">
-                {COLORS.map(c => (
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(COLOR_MAP).map(([name, hex]) => (
                   <button 
-                    key={c}
-                    onClick={() => setFormData(p => ({ ...p, color: c }))}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase border-2 transition-all ${formData.color === c ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-100'}`}
+                    key={name}
+                    title={name}
+                    onClick={() => setFormData(p => ({ ...p, color: name }))}
+                    className={`w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center ${formData.color === name ? 'border-gray-900 scale-110 shadow-md ring-2 ring-gray-200' : 'border-gray-100 hover:scale-105'}`}
+                    style={{ backgroundColor: hex }}
                   >
-                    {c}
+                    {formData.color === name && (
+                      <svg className={`w-5 h-5 ${['Black', 'Navy'].includes(name) ? 'text-white' : 'text-gray-900'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </button>
                 ))}
               </div>
