@@ -2,12 +2,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ItemType } from "../types";
 
+/**
+ * Single-product analysis for manual photo uploads
+ */
 export const analyzeProduct = async (imageBase64: string, type: ItemType) => {
+  // Always create a new instance to catch the latest API key from the handshake
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   const prompt = type === 'clothing'
-    ? `Analyze this clothing item. Identify the brand, the specific garment type (e.g., "Oversized Blazer", "Midi Floral Dress", "High-waisted Jeans"), and a brief description including color or style. Return as JSON.`
-    : `Analyze this beauty/skincare product. Identify the brand, the product type (e.g., "Hyaluronic Acid Serum", "Mineral Sunscreen", "Liquid Lipstick"), and a brief description of its purpose. Return as JSON.`;
+    ? `Analyze this clothing item. Identify the brand, the specific garment type (e.g., "Oversized Blazer", "Midi Floral Dress"), and a brief description. Return as JSON.`
+    : `Analyze this beauty/skincare product. Identify the brand, the product type (e.g., "Serum", "Sunscreen"), and a brief description. Return as JSON.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -24,10 +28,10 @@ export const analyzeProduct = async (imageBase64: string, type: ItemType) => {
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          name: { type: Type.STRING, description: "Specific product or model name" },
-          brand: { type: Type.STRING, description: "Brand name" },
-          category: { type: Type.STRING, description: "Specific sub-category/type" },
-          description: { type: Type.STRING, description: "Short stylistic or functional description" }
+          name: { type: Type.STRING },
+          brand: { type: Type.STRING },
+          category: { type: Type.STRING },
+          description: { type: Type.STRING }
         },
         required: ["name", "brand", "category", "description"]
       }
@@ -37,15 +41,17 @@ export const analyzeProduct = async (imageBase64: string, type: ItemType) => {
   return JSON.parse(response.text || '{}');
 };
 
+/**
+ * Complex parsing for multi-item receipts or text orders
+ */
 export const parseReceipt = async (data: string, isImage: boolean) => {
-  // Creating new instance right before making the API call to ensure valid key usage
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
-  const prompt = `Act as a personal shopper. I am providing a ${isImage ? 'photo' : 'text copy'} of a receipt or order confirmation. 
-  1. Find all physical items (clothing, cosmetics, skincare). Ignore tax, shipping, and discounts.
-  2. For cryptic names (e.g., "LL ALGN TANK 24"), use your knowledge or Google Search to find the REAL name (e.g., "Lululemon Align Tank 24").
-  3. Categorize each as "clothing" or "beauty".
-  4. Return a JSON list of items.`;
+  const prompt = `Act as a personal shopper. I am providing a ${isImage ? 'photo' : 'text copy'} of a receipt. 
+  1. Extract all physical items.
+  2. If a brand/item name is abbreviated or cryptic, use Google Search to find the actual market name.
+  3. Categorize as "clothing" or "beauty".
+  4. Return JSON list.`;
 
   const contentParts: any[] = [{ text: prompt }];
   if (isImage) {
@@ -58,6 +64,7 @@ export const parseReceipt = async (data: string, isImage: boolean) => {
     model: 'gemini-3-pro-image-preview',
     contents: [{ parts: contentParts }],
     config: {
+      // Pro model supports Google Search to identify unknown SKUs
       tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: {
@@ -80,15 +87,22 @@ export const parseReceipt = async (data: string, isImage: boolean) => {
   return JSON.parse(response.text || '[]');
 };
 
+/**
+ * Styling/Usage advice for specific items
+ */
 export const getSmartAdvice = async (item: any) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  
   const prompt = item.type === 'clothing' 
-    ? `You are a fashion stylist. Give 3 quick, chic styling tips for a ${item.brand} ${item.name} (${item.category}). Be specific about pairings.`
-    : `You are a skincare/beauty expert. Give a quick usage tip or ingredient highlight for ${item.brand} ${item.name}. Mention if it's best for morning or night.`;
+    ? `You are a fashion stylist. Give 3 quick styling tips for a ${item.brand} ${item.name}.`
+    : `You are a beauty expert. Give a quick usage tip for ${item.brand} ${item.name}.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: prompt
+    contents: prompt,
+    config: {
+      thinkingConfig: { thinkingBudget: 0 } // Fast response for UI convenience
+    }
   });
 
   return response.text;
