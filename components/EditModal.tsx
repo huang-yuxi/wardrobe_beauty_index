@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { CatalogItem, ItemType, RefillStatus } from '../types';
+import { CatalogItem, ItemType, RefillStatus, Season } from '../types';
 import { analyzeProduct } from '../services/geminiService';
 
 interface EditModalProps {
@@ -11,6 +11,8 @@ interface EditModalProps {
   onSave: (item: Partial<CatalogItem>) => void;
   onDelete?: (id: string) => void;
 }
+
+const COLORS = ['Black', 'White', 'Beige', 'Navy', 'Grey', 'Red', 'Pink', 'Gold', 'Green', 'Blue'];
 
 export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, onClose, onSave, onDelete }) => {
   const isBeauty = type === 'beauty';
@@ -24,6 +26,10 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
     type: type,
     category: '',
     status: 'in-stock' as RefillStatus,
+    color: '',
+    season: 'All-Season' as Season,
+    openedDate: '',
+    expiryMonths: 12,
     imageUrl: '',
     notes: '',
   });
@@ -62,7 +68,7 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] overflow-hidden flex flex-col max-h-[95vh] shadow-2xl animate-in slide-in-from-bottom duration-300">
         <div className="p-8 flex justify-between items-center bg-white sticky top-0 z-10">
-          <h2 className="text-2xl font-serif text-gray-900">{item ? 'Update Item' : `Add ${type === 'beauty' ? 'Beauty' : 'Clothing'}`}</h2>
+          <h2 className="text-2xl font-serif text-gray-900">{item ? 'Edit Entry' : `New ${type}`}</h2>
           <button onClick={onClose} className="p-3 text-gray-400 hover:bg-gray-50 rounded-2xl transition-all">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5"/></svg>
           </button>
@@ -90,17 +96,17 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
           </div>
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quick Categories</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Primary Color</label>
               <div className="flex flex-wrap gap-2">
-                {suggestions.map(s => (
+                {COLORS.map(c => (
                   <button 
-                    key={s} 
-                    onClick={() => setFormData(p => ({ ...p, category: s }))}
-                    className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${formData.category === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    key={c}
+                    onClick={() => setFormData(p => ({ ...p, color: c }))}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase border-2 transition-all ${formData.color === c ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-100'}`}
                   >
-                    {s}
+                    {c}
                   </button>
                 ))}
               </div>
@@ -109,32 +115,60 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Brand</label>
-                <input type="text" value={formData.brand} onChange={e => setFormData(p => ({ ...p, brand: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="Brand name" />
+                <input type="text" value={formData.brand} onChange={e => setFormData(p => ({ ...p, brand: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="e.g. Chanel" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Manual Category</label>
-                <input type="text" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="Custom..." />
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category</label>
+                <input type="text" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="Sub-type..." />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Product Name</label>
-              <input type="text" value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="Description of the item" />
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Name</label>
+              <input type="text" value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" placeholder="Product name..." />
             </div>
+
+            {!isBeauty ? (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Season</label>
+                <div className="flex gap-2">
+                  {(['Spring', 'Summer', 'Autumn', 'Winter', 'All-Season'] as Season[]).map(s => (
+                    <button 
+                      key={s}
+                      onClick={() => setFormData(p => ({ ...p, season: s }))}
+                      className={`flex-1 py-3 text-[9px] font-bold uppercase rounded-xl border-2 transition-all ${formData.season === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-100'}`}
+                    >
+                      {s.split('-')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Opened Date</label>
+                  <input type="date" value={formData.openedDate} onChange={e => setFormData(p => ({ ...p, openedDate: e.target.value }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Shelf Life (Months)</label>
+                  <input type="number" value={formData.expiryMonths} onChange={e => setFormData(p => ({ ...p, expiryMonths: parseInt(e.target.value) }))} className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm outline-none focus:ring-2 ring-gray-100" />
+                </div>
+              </div>
+            )}
 
             {isBeauty && (
               <div className="space-y-3 pt-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inventory Status</label>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Current Stock</label>
                 <div className="flex gap-2">
                   {(['in-stock', 'low', 'out'] as RefillStatus[]).map(s => (
                     <button
                       key={s}
                       onClick={() => setFormData(p => ({ ...p, status: s }))}
                       className={`flex-1 py-4 text-[9px] font-bold uppercase rounded-xl border-2 transition-all ${
-                        formData.status === s ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-400 border-gray-100'
+                        formData.status === s ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-100'
                       }`}
                     >
-                      {s === 'in-stock' ? 'Plenty' : s === 'low' ? 'Low' : 'Empty'}
+                      {s === 'in-stock' ? 'Full' : s === 'low' ? 'Low' : 'Empty'}
                     </button>
                   ))}
                 </div>
@@ -145,10 +179,10 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
 
         <div className="p-8 border-t bg-white flex gap-3">
           {item && onDelete && (
-            <button onClick={() => onDelete(item.id)} className="px-6 text-red-500 font-bold text-[10px] uppercase">Delete</button>
+            <button onClick={() => onDelete(item.id)} className="px-6 text-red-500 font-bold text-[10px] uppercase tracking-widest">Delete</button>
           )}
           <button onClick={() => onSave(formData)} className="flex-1 py-5 bg-gray-900 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl active:scale-95 transition-all">
-            Save Item
+            Update Catalog
           </button>
         </div>
       </div>

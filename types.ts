@@ -3,6 +3,8 @@ export type ItemType = 'clothing' | 'beauty';
 
 export type RefillStatus = 'in-stock' | 'low' | 'out';
 
+export type Season = 'Spring' | 'Summer' | 'Autumn' | 'Winter' | 'All-Season';
+
 export interface CatalogItem {
   id: string;
   name: string;
@@ -10,6 +12,10 @@ export interface CatalogItem {
   type: ItemType;
   category: string;
   status: RefillStatus;
+  color?: string;
+  season?: Season;
+  openedDate?: string; // ISO date for beauty products
+  expiryMonths?: number; // Months after opening
   imageUrl?: string;
   notes?: string;
   lastUpdated: number;
