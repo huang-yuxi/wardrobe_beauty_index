@@ -336,7 +336,7 @@ const App: React.FC = () => {
                         <li>Create a project named <b>"AuraArchive"</b></li>
                         <li>Search for <b>"Google Drive API"</b> and click <b>Enable</b></li>
                         <li>Go to <b>"OAuth consent screen"</b>, choose <b>External</b>, and fill in App Name/Email</li>
-                        <li>Go to <b>"Credentials"</b> > <b>Create Credentials</b> > <b>OAuth client ID</b></li>
+                        <li>Go to <b>"Credentials"</b> &gt; <b>Create Credentials</b> &gt; <b>OAuth client ID</b></li>
                         <li>Select <b>Web Application</b></li>
                         <li>Under <b>Authorized JavaScript Origins</b>, add:<br/><code className="bg-white px-1 rounded font-bold">{window.location.origin}</code></li>
                         <li>Copy the resulting <b>Client ID</b> and paste it above!</li>
