@@ -13,6 +13,8 @@ const App: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteContent, setPasteContent] = useState('');
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,11 +22,9 @@ const App: React.FC = () => {
   const [advice, setAdvice] = useState<string | null>(null);
   const [isAdviceLoading, setIsAdviceLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
 
   // Google Drive State
-  const [isDriveInited, setIsDriveInited] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<number | null>(() => {
@@ -48,22 +48,23 @@ const App: React.FC = () => {
   useEffect(() => {
     if (googleClientId) {
       localStorage.setItem('aura-archive-client-id', googleClientId);
-      initGoogleDrive(googleClientId).then(() => setIsDriveInited(true));
+      initGoogleDrive(googleClientId).then(() => {});
     }
   }, [googleClientId]);
 
-  const handleSmartImport = async () => {
+  const checkApiKey = async () => {
     if (!(window as any).aistudio?.hasSelectedApiKey()) {
-      alert("Receipt scanning requires an enhanced API connection. Please select your key.");
+      alert("Intelligence features require an API connection. Please select your key.");
       await (window as any).aistudio?.openSelectKey();
+      return true;
     }
-    receiptInputRef.current?.click();
+    return true;
   };
 
   const onReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    await checkApiKey();
     setIsImporting(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -77,7 +78,6 @@ const App: React.FC = () => {
           alert("No items found on this receipt.");
         }
       } catch (err) {
-        console.error(err);
         alert("Magic scan failed. Try a clearer photo.");
       } finally {
         setIsImporting(false);
@@ -85,6 +85,27 @@ const App: React.FC = () => {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleTextImport = async () => {
+    if (!pasteContent.trim()) return;
+    await checkApiKey();
+    setIsImporting(true);
+    try {
+      const detected = await parseReceipt(pasteContent, false);
+      if (detected.length > 0) {
+        setBatchItems(detected);
+        setShowBatchModal(true);
+        setShowPasteModal(false);
+        setPasteContent('');
+      } else {
+        alert("No items could be identified from this text.");
+      }
+    } catch (err) {
+      alert("Failed to parse text. Please check your connection.");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleBatchConfirm = (finalItems: BatchItem[]) => {
@@ -98,16 +119,12 @@ const App: React.FC = () => {
       notes: item.notes,
       lastUpdated: Date.now()
     }));
-
     setItems(prev => [...newItems, ...prev]);
     setShowBatchModal(false);
   };
 
   const handleDriveConnect = async () => {
-    if (!googleClientId) {
-      alert("Please enter your Google Client ID in settings first.");
-      return;
-    }
+    if (!googleClientId) return alert("Enter Google Client ID in settings.");
     try {
       await getToken();
       setIsDriveConnected(true);
@@ -130,7 +147,7 @@ const App: React.FC = () => {
     try {
       const cloudData = await loadFromDrive();
       if (cloudData && Array.isArray(cloudData)) {
-        if (window.confirm(isInitialConnect ? `Found ${cloudData.length} cloud items. Load them?` : `Sync ${cloudData.length} items?`)) {
+        if (window.confirm(isInitialConnect ? `Found ${cloudData.length} items. Load?` : `Sync ${cloudData.length} items?`)) {
           setItems(prev => {
             const existingIds = new Set(prev.map(i => i.id));
             const newItems = cloudData.filter(i => !existingIds.has(i.id));
@@ -192,7 +209,7 @@ const App: React.FC = () => {
             <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
             <div className="text-center">
               <span className="block text-xs font-bold uppercase tracking-[0.3em]">{isImporting ? 'Scanning Archive' : 'Syncing Archive'}</span>
-              <span className="block text-[10px] text-white/40 mt-1 uppercase font-bold">Please wait a moment...</span>
+              <span className="block text-[10px] text-white/40 mt-1 uppercase font-bold tracking-widest">Aura Intelligence Active</span>
             </div>
           </div>
         </div>
@@ -269,22 +286,55 @@ const App: React.FC = () => {
             <h3 className="text-lg font-serif text-gray-800 mb-2">Collection is Empty</h3>
             <p className="text-gray-400 text-sm mb-8 italic">Ready to curate your first entries?</p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-               <button onClick={() => setShowModal(true)} className="px-8 py-4 bg-gray-900 text-white text-[11px] font-bold uppercase rounded-full">Manual Entry</button>
-               <button onClick={handleSmartImport} className="px-8 py-4 bg-indigo-600 text-white text-[11px] font-bold uppercase rounded-full">Archive Receipt</button>
+               <button onClick={() => setShowModal(true)} className="px-8 py-4 bg-gray-900 text-white text-[11px] font-bold uppercase rounded-full shadow-lg">Manual Entry</button>
+               <button onClick={() => receiptInputRef.current?.click()} className="px-8 py-4 bg-indigo-600 text-white text-[11px] font-bold uppercase rounded-full shadow-lg">Magic Import</button>
             </div>
           </div>
         )}
       </main>
 
-      <div className="fixed bottom-8 inset-x-0 flex justify-center z-40 pointer-events-none gap-4">
-        <button onClick={handleSmartImport} className="pointer-events-auto bg-white text-gray-900 px-6 py-5 rounded-full shadow-2xl flex items-center gap-3 active:scale-95 transition-all border border-gray-100 hover:bg-gray-50">
-          <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
-          <span className="font-bold tracking-[0.2em] text-[10px] uppercase">Smart Import</span>
-        </button>
-        <button onClick={() => setShowModal(true)} className="pointer-events-auto bg-gray-900 text-white px-8 py-5 rounded-full shadow-2xl flex items-center gap-4 active:scale-95 transition-all group">
-          <span className="font-bold tracking-[0.2em] text-[10px] uppercase">New {activeTab === 'clothing' ? 'Garment' : 'Product'}</span>
-        </button>
+      <div className="fixed bottom-8 inset-x-0 flex justify-center z-40 pointer-events-none gap-3">
+        <div className="flex bg-white/90 backdrop-blur-xl p-1.5 rounded-full shadow-2xl border border-gray-100 pointer-events-auto">
+          <button onClick={() => receiptInputRef.current?.click()} className="p-4 hover:bg-gray-50 rounded-full text-indigo-600 group transition-all" title="Upload Receipt Photo">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" strokeWidth="2"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
+          </button>
+          <button onClick={() => setShowPasteModal(true)} className="p-4 hover:bg-gray-50 rounded-full text-indigo-600 group transition-all" title="Paste Email Text">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth="2"/></svg>
+          </button>
+          <div className="w-[1px] bg-gray-100 mx-2" />
+          <button onClick={() => setShowModal(true)} className="bg-gray-900 text-white px-8 py-4 rounded-full flex items-center gap-3 active:scale-95 transition-all">
+            <span className="font-bold tracking-[0.2em] text-[10px] uppercase">New Entry</span>
+          </button>
+        </div>
       </div>
+
+      {/* Paste Email Text Modal */}
+      {showPasteModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200">
+           <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
+              <div className="flex justify-between items-start mb-6">
+                 <div>
+                    <h3 className="text-xl font-serif text-gray-900">Paste Email Content</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">AI will extract products from order text</p>
+                 </div>
+                 <button onClick={() => setShowPasteModal(false)} className="p-2 text-gray-400 hover:text-gray-900"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2"/></svg></button>
+              </div>
+              <textarea 
+                className="w-full h-64 p-4 bg-gray-50 border border-gray-100 rounded-3xl text-sm focus:bg-white outline-none resize-none font-mono"
+                placeholder="Paste confirmation email text here..."
+                value={pasteContent}
+                onChange={e => setPasteContent(e.target.value)}
+              />
+              <button 
+                onClick={handleTextImport}
+                disabled={!pasteContent.trim() || isImporting}
+                className="w-full mt-6 py-5 bg-indigo-600 text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-30"
+              >
+                Analyze Text
+              </button>
+           </div>
+        </div>
+      )}
 
       <input type="file" ref={receiptInputRef} onChange={onReceiptUpload} accept="image/*" className="hidden" />
 
@@ -299,7 +349,7 @@ const App: React.FC = () => {
       {selectedItem && showModal && (
         <div className="fixed bottom-28 right-6 z-[60] w-72 max-w-[85vw]">
           <div className="bg-gray-900 text-white p-6 rounded-[2rem] shadow-2xl border border-white/10">
-            <span className="block text-[10px] font-bold text-indigo-300 uppercase mb-3">Archive Insight</span>
+            <span className="block text-[10px] font-bold text-indigo-300 uppercase mb-3 tracking-widest">Aura Insight</span>
             <div className="text-[11px] leading-relaxed italic">{isAdviceLoading ? 'Retrieving wisdom...' : advice}</div>
           </div>
         </div>
