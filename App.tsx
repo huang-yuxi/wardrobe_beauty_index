@@ -36,6 +36,7 @@ const App: React.FC = () => {
   });
   const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('aura-archive-client-id') || '');
 
+  // Load local items on mount
   useEffect(() => {
     const saved = localStorage.getItem('aura-archive-items');
     if (saved) {
@@ -51,18 +52,38 @@ const App: React.FC = () => {
     checkAi();
   }, []);
 
+  // Initialize Google Drive when Client ID is available
+  useEffect(() => {
+    if (googleClientId && googleClientId.length > 10) {
+      localStorage.setItem('aura-archive-client-id', googleClientId);
+      initGoogleDrive(googleClientId).catch(err => console.error("Drive Init Error:", err));
+    }
+  }, [googleClientId]);
+
+  // Persist items locally
   useEffect(() => {
     localStorage.setItem('aura-archive-items', JSON.stringify(items));
     if (lastSynced) localStorage.setItem('aura-archive-last-sync', lastSynced.toString());
   }, [items, lastSynced]);
 
   const handleLogin = async () => {
-    if (!googleClientId) return setShowAdvanced(true);
+    if (!googleClientId) {
+      setShowAdvanced(true);
+      return;
+    }
     try {
       await signIn();
       setIsDriveConnected(true);
       handleDrivePull();
-    } catch (err: any) { alert("Drive login failed."); }
+    } catch (err: any) { 
+      console.error(err);
+      alert("Drive login failed. Check your Client ID and Google Cloud 'Test Users'."); 
+    }
+  };
+
+  const handleLogout = () => {
+    signOut();
+    setIsDriveConnected(false);
   };
 
   const handleDrivePush = async () => {
@@ -71,7 +92,7 @@ const App: React.FC = () => {
     try {
       const syncTime = await saveToDrive(items);
       setLastSynced(syncTime);
-    } catch (err) { alert("Save failed."); } finally { setIsSyncing(false); }
+    } catch (err) { alert("Cloud save failed."); } finally { setIsSyncing(false); }
   };
 
   const handleDrivePull = async () => {
@@ -87,7 +108,7 @@ const App: React.FC = () => {
         });
         setLastSynced(Date.now());
       }
-    } catch (err) { alert("Pull failed."); } finally { setIsSyncing(false); }
+    } catch (err) { alert("Cloud pull failed."); } finally { setIsSyncing(false); }
   };
 
   const manualExport = () => {
@@ -113,9 +134,9 @@ const App: React.FC = () => {
             const newItems = imported.filter(i => !existingIds.has(i.id));
             return [...prev, ...newItems];
           });
-          alert(`Imported ${imported.length} items.`);
+          alert(`Success! Added ${imported.length} items to your collection.`);
         }
-      } catch (err) { alert("Invalid file."); }
+      } catch (err) { alert("Invalid backup file."); }
     };
     reader.readAsText(file);
   };
@@ -140,7 +161,7 @@ const App: React.FC = () => {
           setBatchItems(detected);
           setShowBatchModal(true);
         }
-      } catch (err: any) { alert("AI scan failed. Check settings."); } 
+      } catch (err: any) { alert("AI parsing failed. Check your API project."); } 
       finally {
         setIsImporting(false);
         if (receiptInputRef.current) receiptInputRef.current.value = '';
@@ -160,7 +181,7 @@ const App: React.FC = () => {
         setShowPasteModal(false);
         setPasteContent('');
       }
-    } catch (err) { alert("AI scan failed."); } finally { setIsImporting(false); }
+    } catch (err) { alert("Text analysis failed."); } finally { setIsImporting(false); }
   };
 
   const filteredItems = useMemo(() => {
@@ -186,7 +207,6 @@ const App: React.FC = () => {
     closeModals();
   };
 
-  // Fix: Added missing handleDelete function to handle item removal from the catalog
   const handleDelete = (id: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
     closeModals();
@@ -216,7 +236,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-white/60 backdrop-blur-md flex items-center justify-center">
           <div className="bg-gray-900 text-white px-8 py-6 rounded-3xl shadow-2xl flex flex-col items-center gap-4">
             <div className="w-8 h-8 border-3 border-white/20 border-t-white rounded-full animate-spin"></div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em]">{isImporting ? 'Analyzing...' : 'Syncing...'}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em]">{isImporting ? 'Analyzing' : 'Syncing'}</p>
           </div>
         </div>
       )}
@@ -260,27 +280,54 @@ const App: React.FC = () => {
 
                <div className="bg-white p-6 rounded-3xl border border-gray-100">
                   <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Advanced Features</h4>
+                    <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Experimental Features</h4>
                     <span className={`w-2 h-2 rounded-full ${isAiConnected ? 'bg-green-500' : 'bg-gray-200'}`}></span>
                   </div>
                   <div className="space-y-2">
                     <button onClick={activateAi} className={`w-full py-4 text-[10px] font-bold uppercase rounded-xl transition-all ${isAiConnected ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
-                      {isAiConnected ? 'Gemini API Linked' : 'Enable Magic Analysis (Key Req.)'}
+                      {isAiConnected ? 'Gemini API Active' : 'Enable AI Magic (Requires Key)'}
                     </button>
-                    <button onClick={() => setShowAdvanced(!showAdvanced)} className="w-full py-4 text-[10px] font-bold text-gray-400 uppercase">Cloud Sync Setup</button>
+                    <button onClick={() => setShowAdvanced(!showAdvanced)} className={`w-full py-4 text-[10px] font-bold uppercase rounded-xl transition-all ${showAdvanced ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                      {showAdvanced ? 'Hide Sync Settings' : 'Cloud Sync (Google Drive)'}
+                    </button>
                   </div>
                </div>
 
                {showAdvanced && (
-                 <div className="p-6 bg-white rounded-3xl border border-gray-100 space-y-4">
-                    <input type="password" value={googleClientId} onChange={e => setGoogleClientId(e.target.value)} placeholder="Google Client ID" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-mono" />
-                    <button onClick={handleLogin} className="w-full py-4 bg-gray-900 text-white text-[10px] font-bold uppercase rounded-xl">Connect Drive</button>
-                    {isDriveConnected && (
-                      <div className="flex gap-2">
-                        <button onClick={handleDrivePush} className="flex-1 py-3 bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase rounded-xl">Push Cloud</button>
-                        <button onClick={handleDrivePull} className="flex-1 py-3 bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase rounded-xl">Pull Cloud</button>
+                 <div className="p-6 bg-white rounded-3xl border border-indigo-100 space-y-4 animate-in fade-in zoom-in duration-200">
+                    <div>
+                      <label className="block text-[9px] font-bold text-gray-400 uppercase mb-2">Google OAuth Client ID</label>
+                      <input 
+                        type="password" 
+                        value={googleClientId} 
+                        onChange={e => setGoogleClientId(e.target.value)} 
+                        placeholder="000-xxx.apps.googleusercontent.com" 
+                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-mono" 
+                      />
+                    </div>
+                    {!isDriveConnected ? (
+                      <button 
+                        onClick={handleLogin} 
+                        disabled={!googleClientId}
+                        className="w-full py-4 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg disabled:opacity-30"
+                      >
+                        Sign in with Google
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between px-2">
+                          <p className="text-[10px] font-bold text-green-600">Cloud Link Active</p>
+                          <button onClick={handleLogout} className="text-[9px] font-bold text-gray-400 uppercase">Sign Out</button>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={handleDrivePush} className="flex-1 py-3 bg-gray-900 text-white text-[9px] font-bold uppercase rounded-xl">Push to Cloud</button>
+                          <button onClick={handleDrivePull} className="flex-1 py-3 bg-gray-100 text-gray-900 text-[9px] font-bold uppercase rounded-xl">Fetch from Cloud</button>
+                        </div>
                       </div>
                     )}
+                    <p className="text-[9px] text-gray-400 leading-relaxed italic">
+                      Note: You must set up a project in Google Cloud Console and add your email to the "Test Users" list.
+                    </p>
                  </div>
                )}
             </div>
@@ -295,8 +342,8 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="text-center py-32 bg-white rounded-[3rem] border border-gray-100">
-            <p className="text-gray-400 text-sm mb-8 font-medium">Your catalog is empty.</p>
-            <button onClick={() => setShowModal(true)} className="px-10 py-4 bg-gray-900 text-white text-[11px] font-bold uppercase rounded-full shadow-xl shadow-gray-200">Start Adding</button>
+            <p className="text-gray-400 text-sm mb-8 font-medium">Your catalog is currently empty.</p>
+            <button onClick={() => setShowModal(true)} className="px-10 py-4 bg-gray-900 text-white text-[11px] font-bold uppercase rounded-full shadow-xl">Add First Item</button>
           </div>
         )}
       </main>
@@ -315,7 +362,7 @@ const App: React.FC = () => {
             </>
           )}
           <button onClick={() => setShowModal(true)} className="bg-gray-900 text-white px-10 py-4 rounded-full flex items-center gap-3 active:scale-95 transition-all">
-            <span className="font-bold tracking-[0.2em] text-[10px] uppercase">New Item</span>
+            <span className="font-bold tracking-[0.2em] text-[10px] uppercase">New Entry</span>
           </button>
         </div>
       </div>
