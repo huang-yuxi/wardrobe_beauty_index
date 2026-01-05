@@ -13,7 +13,7 @@ export interface CatalogItem {
   category: string;
   status: RefillStatus;
   color?: string;
-  season?: Season;
+  season?: Season[];
   openedDate?: string; // ISO date for beauty products
   expiryMonths?: number; // Months after opening
   imageUrl?: string;

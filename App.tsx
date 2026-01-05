@@ -22,7 +22,6 @@ const COLORS = [
 
 const App: React.FC = () => {
   const [items, setItems] = useState<CatalogItem[]>([]);
-  // Fix: Corrected syntax for useState generic and default value
   const [activeTab, setActiveTab] = useState<ItemType>('clothing');
   const [showModal, setShowModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -93,7 +92,12 @@ const App: React.FC = () => {
       .filter(item => isShoppingMode ? (item.status === 'low' || item.status === 'out') : true)
       .filter(item => selectedColor ? item.color === selectedColor : true)
       .filter(item => selectedCategory ? item.category === selectedCategory : true)
-      .filter(item => selectedSeason ? item.season === selectedSeason : true)
+      .filter(item => {
+        if (!selectedSeason) return true;
+        // Handle both old string format and new array format for backward compatibility
+        const itemSeasons = Array.isArray(item.season) ? item.season : [item.season];
+        return itemSeasons.includes(selectedSeason) || itemSeasons.includes('All-Season');
+      })
       .filter(item => 
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -142,7 +146,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented manualExport to save items locally as JSON
   const manualExport = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(items, null, 2));
     const downloadAnchorNode = document.createElement('a');
@@ -153,7 +156,6 @@ const App: React.FC = () => {
     downloadAnchorNode.remove();
   };
 
-  // Fix: Implemented manualImport to restore items from a JSON backup file
   const manualImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -172,16 +174,13 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // Fix: Implemented activateAi following Google Gemini API instructions for key selection
   const activateAi = async () => {
     if ((window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();
-      // Proceed assuming success per race condition guidelines
       setIsAiConnected(true);
     }
   };
 
-  // Fix: Implemented handleLogin for Google Drive sync
   const handleLogin = async () => {
     try {
       await signIn();
@@ -191,7 +190,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented handleDrivePush to save data to cloud
   const handleDrivePush = async () => {
     setIsSyncing(true);
     try {
@@ -206,7 +204,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented handleDrivePull to fetch data from cloud
   const handleDrivePull = async () => {
     setIsSyncing(true);
     try {
@@ -225,7 +222,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented onReceiptUpload to process receipt images via Gemini
   const onReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -247,7 +243,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented handleTextImport to process order text via Gemini
   const handleTextImport = async () => {
     if (!pasteContent.trim()) return;
     setIsImporting(true);

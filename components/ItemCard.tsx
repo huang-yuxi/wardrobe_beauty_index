@@ -24,6 +24,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
     return new Date() > expiryDate;
   };
 
+  const seasons = Array.isArray(item.season) ? item.season : [item.season].filter(Boolean);
+
   return (
     <div 
       onClick={() => onClick(item)}
@@ -60,11 +62,13 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
           />
         )}
 
-        {item.season && !isBeauty && (
-          <div className="absolute top-3 right-3">
-             <span className="px-2 py-1 rounded-lg bg-white/90 backdrop-blur-md text-gray-900 text-[8px] font-bold uppercase tracking-widest border border-gray-100">
-               {item.season}
-             </span>
+        {seasons.length > 0 && !isBeauty && (
+          <div className="absolute top-3 right-3 flex flex-col gap-1 items-end">
+             {seasons.map(s => (
+                <span key={s} className="px-2 py-0.5 rounded-lg bg-white/90 backdrop-blur-md text-gray-900 text-[8px] font-bold uppercase tracking-widest border border-gray-100">
+                  {s}
+                </span>
+             ))}
           </div>
         )}
       </div>

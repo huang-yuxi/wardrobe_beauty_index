@@ -39,7 +39,7 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
     category: '',
     status: 'in-stock' as RefillStatus,
     color: '',
-    season: 'All-Season' as Season,
+    season: ['All-Season'] as Season[],
     openedDate: '',
     expiryMonths: 12,
     imageUrl: '',
@@ -74,6 +74,30 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const toggleSeason = (s: Season) => {
+    setFormData(prev => {
+      let current = Array.isArray(prev.season) ? [...prev.season] : [];
+      
+      if (s === 'All-Season') {
+        return { ...prev, season: ['All-Season'] };
+      }
+      
+      // If picking a specific season, remove All-Season
+      current = current.filter(item => item !== 'All-Season');
+      
+      if (current.includes(s)) {
+        current = current.filter(item => item !== s);
+      } else {
+        current.push(s);
+      }
+      
+      // If nothing left, default back to All-Season
+      if (current.length === 0) current = ['All-Season'];
+      
+      return { ...prev, season: current };
+    });
   };
 
   return (
@@ -173,18 +197,22 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
 
             {!isBeauty ? (
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recommended Season</label>
-                <div className="flex gap-2">
-                  {(['Spring', 'Summer', 'Autumn', 'Winter', 'All-Season'] as Season[]).map(s => (
-                    <button 
-                      key={s}
-                      type="button"
-                      onClick={() => setFormData(p => ({ ...p, season: s }))}
-                      className={`flex-1 py-3 text-[9px] font-bold uppercase rounded-xl border-2 transition-all ${formData.season === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-100'}`}
-                    >
-                      {s.split('-')[0]}
-                    </button>
-                  ))}
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recommended Seasons (Select Multiple)</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['Spring', 'Summer', 'Autumn', 'Winter', 'All-Season'] as Season[]).map(s => {
+                    const seasons = Array.isArray(formData.season) ? formData.season : [];
+                    const isSelected = seasons.includes(s);
+                    return (
+                      <button 
+                        key={s}
+                        type="button"
+                        onClick={() => toggleSeason(s)}
+                        className={`flex-1 min-w-[80px] py-3 text-[9px] font-bold uppercase rounded-xl border-2 transition-all ${isSelected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-100'}`}
+                      >
+                        {s.split('-')[0]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
