@@ -28,6 +28,38 @@ const COLOR_MAP: Record<string, string> = {
 const CLOTHING_CATEGORIES = ['Dresses', 'Tops', 'Pants', 'Skirts', 'Jackets', 'Knitwear', 'Shoes', 'Accessories'];
 const BEAUTY_CATEGORIES = ['Cleanser', 'Serum', 'Moisturizer', 'SPF', 'Foundation', 'Mascara', 'Lipstick', 'Fragrance'];
 
+// Function to compress image to prevent storage full errors
+const compressImage = (base64: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const MAX_SIZE = 800;
+      
+      if (width > height) {
+        if (width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        }
+      } else {
+        if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7)); // 0.7 quality is good balance
+    };
+  });
+};
+
 export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, onClose, onSave, onDelete }) => {
   const isBeauty = type === 'beauty';
   const categorySuggestions = isBeauty ? BEAUTY_CATEGORIES : CLOTHING_CATEGORIES;
@@ -54,13 +86,14 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
 
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const resultBase64 = event.target?.result as string;
-      setFormData(prev => ({ ...prev, imageUrl: resultBase64 }));
+      const rawBase64 = event.target?.result as string;
+      const compressed = await compressImage(rawBase64);
+      setFormData(prev => ({ ...prev, imageUrl: compressed }));
       
       if (isAiEnabled) {
         setAnalyzing(true);
         try {
-          const base64Clean = resultBase64.split(',')[1];
+          const base64Clean = compressed.split(',')[1];
           const result = await analyzeProduct(base64Clean, type);
           setFormData(prev => ({
             ...prev,
@@ -79,23 +112,14 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
   const toggleSeason = (s: Season) => {
     setFormData(prev => {
       let current = Array.isArray(prev.season) ? [...prev.season] : [];
-      
-      if (s === 'All-Season') {
-        return { ...prev, season: ['All-Season'] };
-      }
-      
-      // If picking a specific season, remove All-Season
+      if (s === 'All-Season') return { ...prev, season: ['All-Season'] };
       current = current.filter(item => item !== 'All-Season');
-      
       if (current.includes(s)) {
         current = current.filter(item => item !== s);
       } else {
         current.push(s);
       }
-      
-      // If nothing left, default back to All-Season
       if (current.length === 0) current = ['All-Season'];
-      
       return { ...prev, season: current };
     });
   };
@@ -111,7 +135,6 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
         </div>
 
         <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
-          {/* Photo Upload Area */}
           <div 
             onClick={() => fileInputRef.current?.click()}
             className="aspect-[4/3] rounded-3xl bg-gray-50 border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all relative overflow-hidden group"
@@ -134,7 +157,6 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
 
           <div className="space-y-6">
-            {/* Color Palette Selection */}
             <div className="space-y-3">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex justify-between">
                 <span>Primary Color</span>
@@ -160,7 +182,6 @@ export const EditModal: React.FC<EditModalProps> = ({ item, type, isAiEnabled, o
               </div>
             </div>
 
-            {/* Common Category Selection */}
             <div className="space-y-3">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quick Category</label>
               <div className="flex flex-wrap gap-2">

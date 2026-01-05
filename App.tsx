@@ -5,7 +5,8 @@ import { ItemCard } from './components/ItemCard';
 import { EditModal } from './components/EditModal';
 import { BatchImportModal } from './components/BatchImportModal';
 import { getSmartAdvice, parseReceipt } from './services/geminiService';
-import { initGoogleDrive, signIn, signOut, saveToDrive, loadFromDrive, isSyncAvailable } from './services/googleDriveService';
+import { initGoogleDrive, signIn, signOut, saveToDrive, loadFromDrive } from './services/googleDriveService';
+import { saveItemsToDB, getItemsFromDB } from './services/dbService';
 
 const COLORS = [
   { name: 'Black', hex: '#000000' },
@@ -20,8 +21,14 @@ const COLORS = [
   { name: 'Blue', hex: '#0000FF' },
 ];
 
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
 const App: React.FC = () => {
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [isDbLoaded, setIsDbLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<ItemType>('clothing');
   const [showModal, setShowModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -34,7 +41,6 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Advanced Filter States
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
@@ -54,11 +60,27 @@ const App: React.FC = () => {
   });
   const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('aura-archive-client-id') || '');
 
+  // Load from IndexedDB on startup
   useEffect(() => {
-    const saved = localStorage.getItem('aura-archive-items');
-    if (saved) {
-      try { setItems(JSON.parse(saved)); } catch (e) { console.error(e); }
-    }
+    const loadData = async () => {
+      try {
+        const dbItems = await getItemsFromDB();
+        setItems(dbItems);
+      } catch (e) {
+        console.error("DB Load failed, falling back to localStorage", e);
+        const saved = localStorage.getItem('aura-archive-items');
+        if (saved) {
+          try { 
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) setItems(parsed);
+          } catch (e) { console.error(e); }
+        }
+      } finally {
+        setIsDbLoaded(true);
+      }
+    };
+    loadData();
+
     const checkAi = async () => {
       if ((window as any).aistudio?.hasSelectedApiKey) {
         const connected = await (window as any).aistudio.hasSelectedApiKey();
@@ -75,12 +97,16 @@ const App: React.FC = () => {
     }
   }, [googleClientId]);
 
+  // Save to IndexedDB whenever items change
   useEffect(() => {
-    localStorage.setItem('aura-archive-items', JSON.stringify(items));
+    if (!isDbLoaded) return;
+    saveItemsToDB(items).catch(err => console.error("Failed to save to DB:", err));
+    
+    // We still keep a small metadata copy in localStorage for non-image data if needed, 
+    // but the full data now lives in IndexedDB.
     if (lastSynced) localStorage.setItem('aura-archive-last-sync', lastSynced.toString());
-  }, [items, lastSynced]);
+  }, [items, lastSynced, isDbLoaded]);
 
-  // Derived Categories for Filters
   const uniqueCategories = useMemo(() => {
     const cats = items.filter(i => i.type === activeTab).map(i => i.category);
     return Array.from(new Set(cats)).filter(Boolean);
@@ -94,16 +120,15 @@ const App: React.FC = () => {
       .filter(item => selectedCategory ? item.category === selectedCategory : true)
       .filter(item => {
         if (!selectedSeason) return true;
-        // Handle both old string format and new array format for backward compatibility
-        const itemSeasons = Array.isArray(item.season) ? item.season : [item.season];
+        const itemSeasons = Array.isArray(item.season) ? item.season : [item.season].filter(Boolean);
         return itemSeasons.includes(selectedSeason) || itemSeasons.includes('All-Season');
       })
       .filter(item => 
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase())
+        (item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (item.brand || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.category || '').toLowerCase().includes(searchQuery.toLowerCase())
       )
-      .sort((a, b) => b.lastUpdated - a.lastUpdated);
+      .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
   }, [items, activeTab, searchQuery, isShoppingMode, selectedColor, selectedCategory, selectedSeason]);
 
   const refillCount = useMemo(() => items.filter(i => i.type === 'beauty' && (i.status === 'low' || i.status === 'out')).length, [items]);
@@ -112,7 +137,7 @@ const App: React.FC = () => {
     if (selectedItem) {
       setItems(prev => prev.map(i => i.id === selectedItem.id ? { ...i, ...itemData, lastUpdated: Date.now() } as CatalogItem : i));
     } else {
-      setItems(prev => [{ ...itemData, id: crypto.randomUUID(), lastUpdated: Date.now() } as CatalogItem, ...prev]);
+      setItems(prev => [{ ...itemData, id: generateId(), lastUpdated: Date.now() } as CatalogItem, ...prev]);
     }
     closeModals();
   };
@@ -259,6 +284,17 @@ const App: React.FC = () => {
     }
   };
 
+  if (!isDbLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Opening Vault...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen pb-40">
       {(isSyncing || isImporting) && (
@@ -297,7 +333,6 @@ const App: React.FC = () => {
             <input type="text" placeholder={`Search your items...`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm outline-none focus:ring-2 ring-gray-100" />
           </div>
 
-          {/* Visual Filter Bar */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
               <button 
@@ -433,7 +468,7 @@ const App: React.FC = () => {
           {isAiConnected && (
             <>
               <button onClick={() => receiptInputRef.current?.click()} className="p-4 hover:bg-indigo-50 rounded-full text-indigo-600 transition-all">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" strokeWidth="2"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812-1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" strokeWidth="2"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
               </button>
               <button onClick={() => setShowPasteModal(true)} className="p-4 hover:bg-indigo-50 rounded-full text-indigo-600 transition-all">
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth="2"/></svg>
@@ -452,7 +487,7 @@ const App: React.FC = () => {
       
       {showModal && <EditModal item={selectedItem} type={activeTab} isAiEnabled={isAiConnected} onClose={closeModals} onSave={handleSave} onDelete={handleDelete} />}
       {showBatchModal && <BatchImportModal items={batchItems} onClose={() => setShowBatchModal(false)} onConfirm={(items) => {
-        const newItems = items.map(i => ({...i, id: crypto.randomUUID(), status: 'in-stock', lastUpdated: Date.now()} as CatalogItem));
+        const newItems = items.map(i => ({...i, id: generateId(), status: 'in-stock', lastUpdated: Date.now()} as CatalogItem));
         setItems(prev => [...newItems, ...prev]);
         setShowBatchModal(false);
       }} />}
