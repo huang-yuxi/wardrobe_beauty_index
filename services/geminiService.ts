@@ -2,12 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ItemType } from "../types";
 
-const getAI = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-};
-
 export const analyzeProduct = async (imageBase64: string, type: ItemType) => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   const prompt = type === 'clothing'
     ? `Analyze this clothing item. Identify the brand, the specific garment type (e.g., "Oversized Blazer", "Midi Floral Dress", "High-waisted Jeans"), and a brief description including color or style. Return as JSON.`
@@ -42,7 +38,7 @@ export const analyzeProduct = async (imageBase64: string, type: ItemType) => {
 };
 
 export const parseReceipt = async (data: string, isImage: boolean) => {
-  // Use Gemini 3 Pro for higher reasoning and Search grounding to identify cryptic receipt codes
+  // Creating new instance right before making the API call to ensure valid key usage
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   const prompt = `Act as a personal shopper. I am providing a ${isImage ? 'photo' : 'text copy'} of a receipt or order confirmation. 
@@ -85,7 +81,7 @@ export const parseReceipt = async (data: string, isImage: boolean) => {
 };
 
 export const getSmartAdvice = async (item: any) => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const prompt = item.type === 'clothing' 
     ? `You are a fashion stylist. Give 3 quick, chic styling tips for a ${item.brand} ${item.name} (${item.category}). Be specific about pairings.`
     : `You are a skincare/beauty expert. Give a quick usage tip or ingredient highlight for ${item.brand} ${item.name}. Mention if it's best for morning or night.`;

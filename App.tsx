@@ -24,7 +24,9 @@ const App: React.FC = () => {
   const [advice, setAdvice] = useState<string | null>(null);
   const [isAdviceLoading, setIsAdviceLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isAiConnected, setIsAiConnected] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   // Google Drive State
   const [isDriveConnected, setIsDriveConnected] = useState(!!localStorage.getItem('aura-drive-session'));
@@ -41,6 +43,14 @@ const App: React.FC = () => {
     if (saved) {
       try { setItems(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
+    
+    // Check AI connection status on load
+    const checkAi = async () => {
+      if ((window as any).aistudio?.hasSelectedApiKey) {
+        setIsAiConnected(await (window as any).aistudio.hasSelectedApiKey());
+      }
+    };
+    checkAi();
   }, []);
 
   useEffect(() => {
@@ -63,7 +73,7 @@ const App: React.FC = () => {
       setIsDriveConnected(true);
       handleDrivePull();
     } catch (err: any) {
-      setSyncError("Sign-in failed. Check popup blockers.");
+      setSyncError("Sign-in failed. Check 'Test Users' in Google Console.");
     }
   };
 
@@ -103,11 +113,73 @@ const App: React.FC = () => {
     } finally { setIsSyncing(false); }
   };
 
-  const checkApiKey = async () => {
-    if (!(window as any).aistudio?.hasSelectedApiKey()) {
-      alert("Intelligence features require an API connection. Please select your key.");
-      await (window as any).aistudio?.openSelectKey();
-      return true;
+  const manualExport = () => {
+    const data = JSON.stringify(items, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aura-archive-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+  };
+
+  const manualImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (Array.isArray(imported)) {
+          if (confirm(`Import ${imported.length} items? This will merge with your current list.`)) {
+            setItems(prev => {
+              const existingIds = new Set(prev.map(i => i.id));
+              const newItems = imported.filter(i => !existingIds.has(i.id));
+              return [...prev, ...newItems];
+            });
+          }
+        }
+      } catch (err) {
+        alert("Invalid backup file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const copyConfig = () => {
+    if (!googleClientId) return alert("Enter a Client ID first.");
+    navigator.clipboard.writeText(googleClientId);
+    alert("Configuration copied! Text this code to your wife.");
+  };
+
+  const pasteConfig = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.includes('.apps.googleusercontent.com')) {
+        setGoogleClientId(text);
+        alert("Configuration imported successfully!");
+      } else {
+        alert("That doesn't look like a valid Google Client ID.");
+      }
+    } catch (e) {
+      const manual = prompt("Paste the configuration code here:");
+      if (manual && manual.includes('.apps.googleusercontent.com')) {
+        setGoogleClientId(manual);
+      }
+    }
+  };
+
+  const activateAi = async () => {
+    if ((window as any).aistudio?.openSelectKey) {
+      await (window as any).aistudio.openSelectKey();
+      setIsAiConnected(true);
+    }
+  };
+
+  const ensureAiConnection = async () => {
+    if (!(window as any).aistudio?.hasSelectedApiKey || !(await (window as any).aistudio.hasSelectedApiKey())) {
+      alert("Magic scanning requires a one-time connection to Gemini AI. Opening setup now...");
+      await activateAi();
     }
     return true;
   };
@@ -115,7 +187,7 @@ const App: React.FC = () => {
   const onReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await checkApiKey();
+    await ensureAiConnection();
     setIsImporting(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -129,7 +201,7 @@ const App: React.FC = () => {
           alert("No items found on this receipt.");
         }
       } catch (err) {
-        alert("Magic scan failed. Try a clearer photo.");
+        alert("Magic scan failed. Ensure you have a valid API project selected in settings.");
       } finally {
         setIsImporting(false);
         if (receiptInputRef.current) receiptInputRef.current.value = '';
@@ -140,7 +212,7 @@ const App: React.FC = () => {
 
   const handleTextImport = async () => {
     if (!pasteContent.trim()) return;
-    await checkApiKey();
+    await ensureAiConnection();
     setIsImporting(true);
     try {
       const detected = await parseReceipt(pasteContent, false);
@@ -276,51 +348,89 @@ const App: React.FC = () => {
           {showSettings && (
             <div className="mb-6 p-6 bg-gray-50 rounded-[2rem] border border-gray-100 space-y-6 animate-in slide-in-from-top duration-300">
               <div className="flex justify-between items-center">
-                 <h3 className="text-xs font-bold text-gray-900 uppercase tracking-[0.2em]">Sync & Account</h3>
-                 <button onClick={() => setShowAdvanced(!showAdvanced)} className="text-[10px] text-gray-400 font-bold uppercase hover:text-indigo-600">Admin Setup</button>
+                 <h3 className="text-xs font-bold text-gray-900 uppercase tracking-[0.2em]">Sync & Intelligence</h3>
+                 <button onClick={() => setShowAdvanced(!showAdvanced)} className="text-[10px] text-gray-400 font-bold uppercase hover:text-indigo-600">Advanced</button>
+              </div>
+
+              {/* Intelligence Section */}
+              <div className="bg-white p-6 rounded-3xl border border-gray-200">
+                <div className="flex justify-between items-start mb-4">
+                   <div>
+                     <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">AI Intelligence</h4>
+                     <p className="text-[10px] text-gray-500 mt-1">Powers Magic Scanning & Receipt Recognition</p>
+                   </div>
+                   <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase ${isAiConnected ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                      {isAiConnected ? 'Active' : 'Offline'}
+                   </span>
+                </div>
+                {!isAiConnected ? (
+                  <button onClick={activateAi} className="w-full py-4 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="2"/></svg>
+                    Activate Intelligence
+                  </button>
+                ) : (
+                  <button onClick={activateAi} className="w-full py-4 bg-white border border-gray-200 text-gray-600 text-[10px] font-bold uppercase rounded-xl hover:bg-gray-50 transition-all">
+                    Update Connection
+                  </button>
+                )}
+                <div className="mt-4 p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[9px] text-gray-400 leading-relaxed italic">
+                    Requires a Google Gemini API Project. 
+                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="ml-1 text-indigo-600 font-bold underline">Learn about billing</a>
+                  </p>
+                </div>
               </div>
 
               {!isDriveConnected ? (
-                <div className="bg-white p-8 rounded-3xl border border-gray-200 text-center shadow-sm">
-                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                     <svg className="w-8 h-8 text-gray-300" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
-                  </div>
-                  <h4 className="text-sm font-bold text-gray-800 mb-1">Backup to Google Drive</h4>
-                  <p className="text-xs text-gray-500 mb-6">Sync your collection across all your devices for free.</p>
-                  <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                <div className="bg-white p-6 rounded-3xl border border-gray-200">
+                  <h4 className="text-xs font-bold text-gray-800 mb-1 uppercase tracking-wider">Cloud Sync</h4>
+                  <p className="text-[10px] text-gray-500 mb-4">Backup your closet to Google Drive</p>
+                  <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 py-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all">
                     <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" className="w-5 h-5" alt="" />
-                    <span className="text-[11px] font-bold text-gray-700">Sign in with Google</span>
+                    <span className="text-[10px] font-bold text-gray-700 uppercase">Connect Drive</span>
                   </button>
                 </div>
               ) : (
-                <div className="bg-indigo-600 p-6 rounded-3xl text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
+                <div className="bg-gray-900 p-6 rounded-3xl text-white shadow-xl shadow-gray-100 relative overflow-hidden">
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-4">
                        <div>
                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-70">Cloud Archive</p>
-                         <h4 className="text-lg font-serif">Your Vault is Live</h4>
-                       </div>
-                       <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="2"/></svg>
+                         <h4 className="text-lg font-serif">Cloud Vault Active</h4>
                        </div>
                     </div>
                     <div className="flex items-center gap-4 mt-6">
-                       <button onClick={handleDrivePush} className="flex-1 py-3 bg-white text-indigo-600 text-[10px] font-bold uppercase rounded-xl shadow-lg">Push Data</button>
-                       <button onClick={handleDrivePull} className="flex-1 py-3 bg-indigo-500 text-white text-[10px] font-bold uppercase rounded-xl border border-white/20">Fetch Updates</button>
+                       <button onClick={handleDrivePush} className="flex-1 py-3 bg-white text-gray-900 text-[10px] font-bold uppercase rounded-xl shadow-lg">Push Data</button>
+                       <button onClick={handleDrivePull} className="flex-1 py-3 bg-gray-800 text-white text-[10px] font-bold uppercase rounded-xl border border-white/20">Fetch Updates</button>
                     </div>
                     <div className="mt-4 flex justify-between items-center">
-                       <p className="text-[10px] opacity-60">Last synced: {lastSynced ? new Date(lastSynced).toLocaleTimeString() : 'Never'}</p>
-                       <button onClick={handleLogout} className="text-[10px] font-bold uppercase opacity-60 hover:opacity-100">Sign Out</button>
+                       <p className="text-[10px] opacity-60">Synced: {lastSynced ? new Date(lastSynced).toLocaleTimeString() : 'Never'}</p>
+                       <button onClick={handleLogout} className="text-[10px] font-bold uppercase opacity-60 hover:opacity-100">Disconnect</button>
                     </div>
                   </div>
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl"></div>
                 </div>
               )}
+
+              {/* Manual Backup Fallback */}
+              <div className="bg-white p-6 rounded-3xl border border-gray-200">
+                <h4 className="text-xs font-bold text-gray-800 mb-3 uppercase tracking-wider">Manual Data Control</h4>
+                <div className="flex gap-3">
+                  <button onClick={manualExport} className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 text-[10px] font-bold uppercase rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth="2.5"/></svg>
+                    Export
+                  </button>
+                  <button onClick={() => backupInputRef.current?.click()} className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 text-[10px] font-bold uppercase rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeWidth="2.5"/></svg>
+                    Restore
+                  </button>
+                </div>
+                <input type="file" ref={backupInputRef} onChange={manualImport} accept=".json" className="hidden" />
+              </div>
 
               {showAdvanced && (
                 <div className="p-6 bg-white rounded-3xl border border-gray-200 space-y-4 animate-in fade-in zoom-in duration-200 shadow-sm">
                   <div className="flex justify-between items-center">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client ID Configuration</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Sync Credentials</p>
                     <button onClick={() => setShowHelp(!showHelp)} className="text-[10px] text-indigo-600 font-bold uppercase flex items-center gap-1">
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2"/></svg>
                       Setup Steps
@@ -328,17 +438,26 @@ const App: React.FC = () => {
                   </div>
                   <input type="password" value={googleClientId} onChange={e => setGoogleClientId(e.target.value)} placeholder="000000-xxxx.apps.googleusercontent.com" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-mono" />
                   
+                  <div className="flex gap-2">
+                    <button onClick={copyConfig} className="flex-1 py-3 bg-gray-900 text-white text-[10px] font-bold uppercase rounded-xl">Copy Config</button>
+                    <button onClick={pasteConfig} className="flex-1 py-3 bg-gray-100 text-gray-900 text-[10px] font-bold uppercase rounded-xl">Paste Config</button>
+                  </div>
+
                   {showHelp && (
                     <div className="p-5 bg-indigo-50/50 rounded-2xl text-[11px] text-indigo-900 leading-relaxed border border-indigo-100 animate-in slide-in-from-top-2">
-                      <p className="mb-3 font-bold text-indigo-900 uppercase tracking-wider">How to get your Client ID (FREE):</p>
-                      <ol className="list-decimal list-inside space-y-2">
+                      <p className="mb-3 font-bold text-indigo-900 uppercase tracking-wider text-xs">How to get your Client ID (FREE):</p>
+                      <ol className="list-decimal list-inside space-y-3">
                         <li>Go to <a href="https://console.cloud.google.com/" target="_blank" className="underline font-bold">Google Cloud Console</a></li>
                         <li>Create a project named <b>"AuraArchive"</b></li>
                         <li>Search for <b>"Google Drive API"</b> and click <b>Enable</b></li>
                         <li>Go to <b>"OAuth consent screen"</b>, choose <b>External</b>, and fill in App Name/Email</li>
+                        <li className="bg-red-50 p-2 rounded-lg border border-red-100">
+                           <span className="font-bold">CRITICAL:</span> Under <b>"Audience" (or "Test Users")</b>, add your emails.
+                           <br/><span className="italic mt-1 block opacity-80 font-bold">Use LOWERCASE only. No spaces. Type manually.</span>
+                        </li>
                         <li>Go to <b>"Credentials"</b> &gt; <b>Create Credentials</b> &gt; <b>OAuth client ID</b></li>
                         <li>Select <b>Web Application</b></li>
-                        <li>Under <b>Authorized JavaScript Origins</b>, add:<br/><code className="bg-white px-1 rounded font-bold">{window.location.origin}</code></li>
+                        <li>Under <b>Authorized JavaScript Origins</b>, add:<br/><code className="bg-white px-1 rounded font-bold break-all">{window.location.origin}</code></li>
                         <li>Copy the resulting <b>Client ID</b> and paste it above!</li>
                       </ol>
                     </div>
