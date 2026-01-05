@@ -1,0 +1,7 @@
+{
+  "name": "AuraArchive - Personal Style & Beauty Catalog",
+  "description": "An elegant, personal inventory manager for clothing and cosmetics. Features smart AI-powered product analysis and cross-device sync.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
